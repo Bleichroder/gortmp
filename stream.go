@@ -55,16 +55,17 @@ type chunkHeader struct {
 //rtmp包, 包含rtmp header和rtmp body数据
 type rtmpPacket struct {
 	chunkHeader
-	currts uint32
 	data   *bytes.Buffer
+	currts uint32
 }
 
 //rtmp消息, 由rtmp包组合而成
 type rtmpMessage struct {
 	app  string
-	ts   uint32
+	sn   string
 	msgs map[uint32]*rtmpPacket
 	conn net.Conn
+	ts   uint32
 }
 
 //解析chunk header
@@ -76,14 +77,18 @@ func (r *rtmpMessage) readchunkHeader() *chunkHeader {
 		}
 	}()
 
-	fmt.Println("=====readChunkHeader=====")
 	buf := get_byte(r.conn)
-	fmt.Println("rtmp basic header: ", buf)
+	if buf == 0 {
+		return nil
+	}
+	
+	//fmt.Println("rtmp basic header: ", buf)
 
 	h.chunkfmt = (buf & 0xC0) >> 6
 	fmt.Println("header format: ", h.chunkfmt)
 
 	h.csid = uint32(buf & 0x3F)
+	//StreamID=(ChannelID-4)/5+1
 	switch h.csid {
 	case 0:
 		h.csid = uint32(get_byte(r.conn)) + 64
@@ -92,6 +97,7 @@ func (r *rtmpMessage) readchunkHeader() *chunkHeader {
 		h.csid += uint32(get_byte(r.conn)) * 256
 	default:
 	}
+	fmt.Println("header cs id: ", h.csid)
 
 	switch h.chunkfmt {
 	// Chunks of Type 0 are 11 bytes long. This type MUST be used at the
@@ -109,10 +115,16 @@ func (r *rtmpMessage) readchunkHeader() *chunkHeader {
 	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 	//       Figure 9 Chunk Message Header – Type 0
 	case 0:
+		fmt.Println("=====readChunkHeader=====")
 		h.timestamp = get_three_byte(r.conn)
 		h.msglen = get_three_byte(r.conn)
 		h.typeid = get_byte(r.conn)
 		h.streamid = get_four_byte_LE(r.conn)
+		fmt.Println("msgLen: ", h.msglen)
+		fmt.Println("msgtypeID: ", h.typeid)
+		fmt.Println("streamID:", h.streamid)
+		fmt.Println("timestamp: ", h.timestamp)
+		fmt.Println("=====readChunkHeader===end=====")
 	// Chunks of Type 1 are 7 bytes long. The message stream ID is not
 	// included; this chunk takes the same stream ID as the preceding chunk.
 	// Streams with variable-sized messages (for example, many video
@@ -128,9 +140,15 @@ func (r *rtmpMessage) readchunkHeader() *chunkHeader {
 	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 	//       Figure 10 Chunk Message Header – Type 1
 	case 1:
+		fmt.Println("=====readChunkHeader=====")
 		h.timestamp = get_three_byte(r.conn)
 		h.msglen = get_three_byte(r.conn)
 		h.typeid = get_byte(r.conn)
+		fmt.Println("msgLen: ", h.msglen)
+		fmt.Println("msgtypeID: ", h.typeid)
+		fmt.Println("streamID:", h.streamid)
+		fmt.Println("timestamp: ", h.timestamp)
+		fmt.Println("=====readChunkHeader===end=====")
 	// Chunks of Type 2 are 3 bytes long. Neither the stream ID nor the
 	// message length is included; this chunk has the same stream ID and
 	// message length as the preceding chunk. Streams with constant-sized
@@ -165,25 +183,21 @@ func (r *rtmpMessage) readchunkHeader() *chunkHeader {
 		h.extendedts = get_four_byte(r.conn)
 	}
 
-	fmt.Println("chunk stream id: ", h.csid)
-	fmt.Println("timestamp: ", h.timestamp)
-	fmt.Println("amfSize: ", h.msglen)
-	fmt.Println("amfType: ", h.typeid)
-	fmt.Println("streamID:", h.streamid)
-	fmt.Println("=====readChunkHeader===end=====")
 	return h
 }
 
 //解析一个rtmp包, 包含chunk header和body部分, 当一个packet数据部分读取完毕之后返回
 //rtmppacket, 若未读取完毕则返回nil
-func (r *rtmpMessage) readPacket() *rtmpPacket {
-	fmt.Println("===========readChunkPacket============")
-
+func (r *rtmpMessage) readPacket(ishead bool) *rtmpPacket {
 	var size uint32
 	h := r.readchunkHeader()
 	if h == nil {
-		panic("hah")
+		//fmt.Println("readchunkHeader failed")
+		return nil
 	}
+
+	fmt.Println("===========readChunkPacket============")
+
 	packet, ok := r.msgs[h.csid]
 
 	if !ok {
@@ -191,41 +205,45 @@ func (r *rtmpMessage) readPacket() *rtmpPacket {
 		r.msgs[h.csid] = packet
 	}
 
-	packet.chunkfmt = h.chunkfmt
-	switch packet.chunkfmt {
-	case 0:
-		packet.csid = h.csid
-		packet.timestamp = h.timestamp
-		packet.msglen = h.msglen
-		packet.typeid = h.typeid
-		packet.streamid = h.streamid
-		if h.extendedts != 0 {
-			packet.extendedts = h.extendedts
-			packet.currts = packet.timestamp + h.extendedts
-			break
+	if ishead {
+		packet.chunkfmt = h.chunkfmt
+		switch packet.chunkfmt {
+		case 0:
+			packet.csid = h.csid
+			packet.timestamp = h.timestamp
+			packet.msglen = h.msglen
+			packet.typeid = h.typeid
+			packet.streamid = h.streamid
+			if h.extendedts != 0 {
+				packet.extendedts = h.extendedts
+				packet.currts = packet.timestamp + h.extendedts
+				break
+			}
+			packet.currts = packet.timestamp
+		case 1:
+			packet.csid = h.csid
+			packet.timestamp = h.timestamp
+			packet.msglen = h.msglen
+			packet.typeid = h.typeid
+			if h.extendedts != 0 {
+				packet.extendedts = h.extendedts
+				packet.currts += packet.timestamp + h.extendedts
+				break
+			}
+			packet.currts += packet.timestamp
+		case 2:
+			packet.csid = h.csid
+			packet.timestamp = h.timestamp
+			if h.extendedts != 0 {
+				packet.extendedts = h.extendedts
+				packet.currts += packet.timestamp + h.extendedts
+				break
+			}
+			packet.currts += packet.timestamp
+		case 3:
+			packet.currts += packet.timestamp
+		default:
 		}
-		packet.currts = packet.timestamp
-	case 1:
-		packet.csid = h.csid
-		packet.timestamp = h.timestamp
-		packet.msglen = h.msglen
-		packet.typeid = h.typeid
-		if h.extendedts != 0 {
-			packet.extendedts = h.extendedts
-			packet.currts += packet.timestamp + h.extendedts
-			break
-		}
-		packet.currts += packet.timestamp
-	case 2:
-		packet.csid = h.csid
-		packet.timestamp = h.timestamp
-		if h.extendedts != 0 {
-			packet.extendedts = h.extendedts
-			packet.currts += packet.timestamp + h.extendedts
-			break
-		}
-		packet.currts += packet.timestamp
-	default:
 	}
 
 	left := packet.msglen - uint32(packet.data.Len())
@@ -249,70 +267,8 @@ func (r *rtmpMessage) readPacket() *rtmpPacket {
 	return nil
 }
 
-func (r *rtmpMessage)writePacket(p *rtmpPacket) {
+func (r *rtmpMessage) writePacket(p *rtmpPacket) {
 	buf := new(bytes.Buffer)
-
-	if p.typeid == VIDEO_TYPE || p.typeid == AUDIO_TYPE{
-		if p.csid < 64 {
-			cHeader := (p.chunkfmt << 6) & 0xC0
-			cHeader = cHeader | uint8(p.csid)
-			binary.Write(buf, binary.BigEndian, cHeader)
-		} else if p.csid > 63 && p.csid < 320 {
-			cHeader := (uint16(p.chunkfmt) << 14) & 0xC000
-			cHeader = cHeader | uint16(p.csid-64)
-			binary.Write(buf, binary.BigEndian, cHeader)
-		} else {
-			tempHeader := (p.chunkfmt << 6) & 0x01
-			buf.WriteByte(tempHeader)
-			tmp := uint16(p.csid - 64)
-			binary.Write(buf, binary.LittleEndian, &tmp)
-		}
-		fmt.Println("packet header type: ", p.chunkfmt)
-
-        size := p.msglen
-		//left := p.data.Len()
-        fmt.Println("data.len & msglen", p.data.Len(), "&", p.msglen)
-
-		switch p.chunkfmt {
-		case 0:
-			binary.Write(buf, binary.BigEndian, change_three_byte(p.timestamp))
-			binary.Write(buf, binary.BigEndian, change_three_byte(uint32(size)))
-			binary.Write(buf, binary.BigEndian, p.typeid)
-			binary.Write(buf, binary.BigEndian, change_four_byte_LE(p.streamid))
-		case 1:
-			binary.Write(buf, binary.BigEndian, change_three_byte(p.timestamp))
-			binary.Write(buf, binary.BigEndian, change_three_byte(uint32(size)))
-			binary.Write(buf, binary.BigEndian, p.typeid)
-		case 2:
-			binary.Write(buf, binary.BigEndian, change_three_byte(p.timestamp))
-		}
-
-		io.CopyN(buf, p.data, int64(size))
-		/*left -= size
-		if left == 0 {
-			return
-		}
-
-		for left > 0 {
-			if size > left {
-				size = left
-			}
-
-			byteHeader := make([]byte, 1)
-			byteHeader[0] = (0x3 << 6) | byte(p.csid)
-			buf.Write(byteHeader)
-            //binary.Write(buf, binary.BigEndian, []byte{0x17, 0, 0, 0, 0})
-
-			io.CopyN(buf, p.data, int64(size))
-			left -= (size)
-			if left == 0 {
-				break
-			}
-		}*/
-
-		r.conn.Write(buf.Bytes())
-        return
-	}
 
 	if p.csid < 64 {
 		cHeader := (p.chunkfmt << 6) & 0xC0
@@ -328,7 +284,6 @@ func (r *rtmpMessage)writePacket(p *rtmpPacket) {
 		tmp := uint16(p.csid - 64)
 		binary.Write(buf, binary.LittleEndian, &tmp)
 	}
-	fmt.Println("packet header type: ", p.chunkfmt)
 
 	switch p.chunkfmt {
 	case 0:
@@ -344,28 +299,47 @@ func (r *rtmpMessage)writePacket(p *rtmpPacket) {
 		binary.Write(buf, binary.BigEndian, change_three_byte(p.timestamp))
 	}
 
-	size := 128
-	left := p.data.Len()
+	if p.typeid == VIDEO_TYPE || p.typeid == AUDIO_TYPE {
+		size := 128
+		left := p.data.Len()
+		fmt.Println("size: ", size, "left: ", p.data.Len())
 
-	for left > 0 {
-		if size > left {
-			size = left
+		for left > 0 {
+			if size > left {
+				size = left
+			}
+
+			io.CopyN(buf, p.data, int64(size))
+			left -= size
+			if left == 0 {
+				break
+			}
+			//fmt.Println("没有跳出")
+			byteHeader := make([]byte, 1)
+			byteHeader[0] = (0x3 << 6) | byte(p.csid)
+			buf.Write(byteHeader)
 		}
+	} else {
+		size := 128
+		left := p.data.Len()
 
-		io.CopyN(buf, p.data, int64(size))
-		left -= size
-		if left == 0 {
-			break
+		for left > 0 {
+			if size > left {
+				size = left
+			}
+
+			io.CopyN(buf, p.data, int64(size))
+			left -= size
+			if left == 0 {
+				break
+			}
+
+			byteHeader := make([]byte, 1)
+			byteHeader[0] = (0x3 << 6) | byte(p.csid)
+			buf.Write(byteHeader)
 		}
-
-		byteHeader := make([]byte, 1)
-		byteHeader[0] = (0x3 << 6) | byte(p.csid)
-		buf.Write(byteHeader)
 	}
 
-	if p.typeid == VIDEO_TYPE {
-		fmt.Println("hah", buf.Bytes())
-	}
 	r.conn.Write(buf.Bytes())
 }
 

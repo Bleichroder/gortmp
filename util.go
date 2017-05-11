@@ -23,8 +23,8 @@ func writeBuffer(w io.Writer,buf []byte) error {
 func get_byte(r io.Reader) byte {
     data, err := readBuffer(r, 1)
     if err != nil{
-        fmt.Println(err)
-        panic(err)
+        //fmt.Println(err)
+        return 0
     }
 
     return data[0]

@@ -31,12 +31,12 @@ type amfObj struct {
 func amf_read(r io.Reader) *amfObj {
 	obj := &amfObj{}
 	objType := get_byte(r)
-	fmt.Println("objType", objType)
+	fmt.Println("objType: ", objType)
 
 	switch objType {
 	case AMF_NUMBER:
 		obj.f64 = amf_read_number64(r)
-		fmt.Println("corenumber", obj.f64)
+		fmt.Println("corenumber: ", obj.f64)
 	case AMF_BOOLEAN:
 		obj.i = get_byte(r)
 		fmt.Println("coreboolean: ", obj.i)
@@ -45,7 +45,7 @@ func amf_read(r io.Reader) *amfObj {
 		obj.str = amf_read_string(r, int32(n))
 		fmt.Println("corestring: ", obj.str)
 	case AMF_MAP:
-		fmt.Println("decode core map")
+		fmt.Println("decode core map: ")
 		num := get_four_byte(r)
 		fmt.Println("map num: ", num)
 		fallthrough
@@ -117,7 +117,7 @@ func amf_write_string(str string) []byte {
 }
 
 func amf_read_core_object(r io.Reader) map[string]*amfObj {
-	fmt.Println("decode obj")
+	fmt.Println("======begin decode obj======")
 
 	objMap := make(map[string]*amfObj)
 
@@ -153,6 +153,13 @@ func amf_read_core_object(r io.Reader) map[string]*amfObj {
 			fallthrough
 		case AMF_OBJECT:
 			obj.objs = amf_read_core_object(r)
+		case AMF_ARRAY:
+			fmt.Println("decode array")
+			num := get_four_byte(r)
+			fmt.Println("array num: ", num)
+			for i:=uint32(0); i<num; i++ {
+				amf_read(r)
+			}
 		case AMF_NULL:
 			fmt.Println("null")
 		}
@@ -160,6 +167,7 @@ func amf_read_core_object(r io.Reader) map[string]*amfObj {
 		objMap[key] = obj
 	}
 
+	fmt.Println("======decode obj======end====")
 	return objMap
 }
 
