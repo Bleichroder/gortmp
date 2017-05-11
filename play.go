@@ -7,6 +7,9 @@ import (
 	"io/ioutil"
 	"time"
 	"strconv"
+	"path"
+	"runtime"
+	"strings"
 )
 
 //play命令
@@ -132,8 +135,12 @@ func handlePlay(msg *rtmpMessage, packet *rtmpPacket, streamname *amfObj, reset 
 	fmt.Println("")*/
 
 	//点播一个flv视频
-	dir := "/home/blue/go/rtmp/rtmp-blue/server/" + streamname.str + ".flv"
-	videodata, err := ioutil.ReadFile(fmt.Sprintf("%s", dir))
+	_, fullFilename, _, _ := runtime.Caller(0)
+	filenamewithSuffix := path.Base(fullFilename)
+	filedir := strings.TrimSuffix(fullFilename, filenamewithSuffix)
+	filedir = filedir + "video/" +streamname.str + ".flv"
+	fmt.Println("videodir", filedir)
+	videodata, err := ioutil.ReadFile(fmt.Sprintf("%s", filedir))
 	if err == nil {
 		go func() {
 			flvbyte := videodata[13:]

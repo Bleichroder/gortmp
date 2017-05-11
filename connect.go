@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"bytes"
 	"encoding/binary"
-	"path"
-	"runtime"
-	"strings"
 )
 
 //connect命令
@@ -15,13 +12,9 @@ func handleConnect(msg *rtmpMessage, f float64, obj *amfObj) {
 	fmt.Println("handle Connection")
 
 	msg.app = obj.objs["app"].str
-	_, fullFilename, _, _ := runtime.Caller(0)
-	filenamewithSuffix := path.Base(fullFilename)
-	fileSuffix := path.Ext(filenamewithSuffix)
-	filename := strings.TrimSuffix(filenamewithSuffix, fileSuffix)
-	fmt.Println("msg.app: ", msg.app)
-	fmt.Println("filename: ", filename)
-	if msg.app != filename && msg.app != "live" {
+	//fmt.Println("msg.app: ", msg.app)
+	//fmt.Println("filename: ", filename)
+	if msg.app != "gortmp" && msg.app != "live" {
 		fmt.Println("App Name is Wrong")
 
 		//_result(Connect.Rejected)
