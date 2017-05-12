@@ -33,3 +33,4 @@
 </br>介绍了RTMP的复杂握手模式，并通过抓包的方法对官方协议中没有介绍的消息命令进行解释
 * [使用RTMP协议进行视频直播](http://lovejesse.wang/live-rtmp/)
 </br>用实例分析了对一个flv文件解析并传输的过程
+* [最简单的基于Flash的流媒体示例：网页播放器（HTTP，RTMP，HLS）](http://blog.csdn.net/leixiaohua1020/article/details/43936415?utm_source=tuicool&utm_medium=referral)
