@@ -303,28 +303,31 @@ func handlePlay(msg *rtmpMessage, packet *rtmpPacket, streamname *amfObj, reset 
 			if app, ok := appMap[s]; ok {
 				playpublish[s] = true
 				for {
-					if videoinfo[streamname.str] != nil && audioinfo[streamname.str] != nil {
+					if videoinfo[streamname.str] != nil {
 						break
 					}
 				}
 				fmt.Println("videoinfodata:", videoinfo[streamname.str].data.Bytes())
 				fmt.Println(videoinfo[streamname.str])
 				tmpvinfo := new(rtmpPacket)
-				tmpainfo := new(rtmpPacket)
 				*tmpvinfo = *(videoinfo[streamname.str])
-				*tmpainfo = *(audioinfo[streamname.str])
 				tmpvinfo.data = new(bytes.Buffer)
 				var tb1 []byte
 				tb1 = append(tb1, videoinfo[streamname.str].data.Bytes()...)
 				tmpvinfo.data.Write(tb1)
-				tmpainfo.data = new(bytes.Buffer)
-				var tb2 []byte
-				tb2 = append(tb2, audioinfo[streamname.str].data.Bytes()...)
-				tmpainfo.data.Write(tb2)
 				tmpvinfo.streamid = streamid[s]
-				tmpainfo.streamid = streamid[s]
 				msg.writePacket(tmpvinfo)
-				msg.writePacket(tmpainfo)
+
+				if audioinfo[streamname.str] != nil {
+					tmpainfo := new(rtmpPacket)
+					*tmpainfo = *(audioinfo[streamname.str])
+					tmpainfo.data = new(bytes.Buffer)
+					var tb2 []byte
+					tb2 = append(tb2, audioinfo[streamname.str].data.Bytes()...)
+					tmpainfo.data.Write(tb2)
+					tmpainfo.streamid = streamid[s]	
+					msg.writePacket(tmpainfo)
+				}
 				for {
 					vv, open := <-app
 					if !open {
