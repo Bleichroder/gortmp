@@ -1,0 +1,8 @@
+rtmp://live.hkstv.hk.lxdns.com/live/hks
+rtmp://ftv.sun0769.com/dgrtv1/mp4:b1
+
+rtmp://192.168.3.163/live/livestream
+
+ffmpeg -re -i test.flv -c copy -f flv rtmp://192.168.3.163/live/livestream
+ffmpeg -f dshow -i video="Live! Cam Optia AF (VF0560) #3" -vcodec libx264 -preset:v ultrafast -tune:v zerolatency -f flv rtmp://192.168.3.163/live/livestream
+ffmpeg.exe -i "rtsp://admin:admin@192.168.3.132:554/cam/realmonitor?channel=1&subtype=0" -f flv -r 25 -s 640*480 -c:v libx264 -an "rtmp://192.168.3.163/live/livestream"
